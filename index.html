@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light" />
+<link rel="icon" href="data:," />
+<title>简历编辑器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#eef0f2; --panel:#ffffff; --line:#e2e5e9; --text:#1a1d21; --muted:#6b7280;
+    --accent:#111111; --accent2:#2563eb; --danger:#dc2626; --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;}
+  button,[role="button"],select,summary,input:not([type="checkbox"]){min-height:36px}
+  button{cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:8px;padding:0 14px;font-size:13px;font-weight:600;color:var(--text);display:inline-flex;align-items:center;gap:6px;justify-content:center;white-space:nowrap}
+  button:hover{border-color:#c4c9d1;background:#f8f9fa}
+  button.primary{background:#111;color:#fff;border-color:#111}
+  button.primary:hover{background:#222}
+  button.blue{background:var(--accent2);color:#fff;border-color:var(--accent2)}
+  button.danger{color:var(--danger)}
+  button.icon-btn{padding:0 8px;min-width:36px;font-size:12px}
+  button.small{min-height:32px;padding:0 10px;font-size:12px}
+
+  /* ---------- Toolbar ---------- */
+  .toolbar{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .toolbar .brand{font-size:17px;font-weight:800;margin-right:4px;letter-spacing:.02em}
+  .toolbar .brand span{font-weight:400;color:var(--muted);font-size:12px;margin-left:8px}
+  .toolbar .spacer{flex:1}
+  .save-hint{font-size:12px;color:var(--muted)}
+  .toolbar-switch{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;padding:6px 4px;white-space:nowrap}
+  .toolbar-switch input{width:17px;height:17px;accent-color:#111;cursor:pointer;flex:0 0 auto}
+  .unsaved-badge{display:none;font-size:12px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #f59e0b;padding:5px 9px;border-radius:20px;white-space:nowrap;align-items:center}
+  .unsaved-badge.show{display:inline-flex}
+  .toolbar-note{flex-basis:100%;font-size:12px;color:var(--muted);line-height:1.5}
+  @media(max-width:640px){ .toolbar .brand span{display:none} .save-hint{display:none} }
+
+  /* ---------- Layout ---------- */
+  .layout{display:flex;gap:0;align-items:flex-start;max-width:1720px;margin:0 auto}
+  .editor{width:400px;flex:0 0 400px;height:calc(100vh - 57px);overflow-y:auto;padding:14px 14px 60px;background:#f7f8f9;border-right:1px solid var(--line)}
+  .preview-wrap{flex:1;min-width:0;padding:22px 16px 60px;overflow-x:hidden}
+  @media(max-width:900px){
+    .layout{flex-direction:column}
+    .editor{width:100%;flex:none;height:auto;overflow:visible;border-right:none;border-bottom:1px solid var(--line)}
+    .preview-wrap{width:100%}
+  }
+
+  /* ---------- Editor cards ---------- */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+  .card-head{display:flex;align-items:center;gap:8px;padding:11px 12px;cursor:pointer;user-select:none;background:#fff}
+  .card-head:hover{background:#fafbfc}
+  .card-head .chev{transition:transform .18s;font-size:12px;color:var(--muted);flex:0 0 auto}
+  .card.closed .card-head .chev{transform:rotate(-90deg)}
+  .card-head .ctitle{font-weight:700;font-size:14px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card-body{padding:4px 12px 14px;border-top:1px solid #f0f1f3}
+  .card.closed .card-body{display:none}
+  .field{margin-top:10px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:600}
+  .field input[type="text"],.field input[type="email"],.field input[type="tel"],.field textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.55;font-family:inherit;background:#fff;color:var(--text)}
+  .field textarea{resize:vertical;min-height:64px}
+  .field textarea.tall{min-height:170px}
+  .field input:focus,.field textarea:focus{outline:2px solid #111;outline-offset:0;border-color:#111}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .entry-box{border:1px solid var(--line);border-radius:9px;padding:10px 10px 12px;margin-top:12px;background:#fcfcfd}
+  .entry-bar{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+  .entry-bar .enum{font-size:12px;font-weight:700;color:#fff;background:#111;border-radius:20px;padding:2px 9px;flex:0 0 auto}
+  .entry-bar .spacer{flex:1}
+  .mini-btn{min-height:32px;min-width:32px;padding:0 7px;font-size:12px;border-radius:7px}
+  .switch{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;padding:6px 2px}
+  .switch input{width:17px;height:17px;accent-color:#111}
+  .add-row{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+  .photo-row{display:flex;gap:12px;align-items:center;margin-top:10px}
+  .photo-thumb{width:54px;height:68px;object-fit:cover;border:1px solid var(--line);border-radius:4px;background:#f1f2f4;display:block}
+  .photo-thumb.empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;text-align:center;padding:4px}
+  .hint{font-size:12px;color:var(--muted);line-height:1.6;margin-top:8px}
+
+  /* ---------- Resume paper ---------- */
+  .paper-scale{margin:0 auto;transform-origin:top center}
+  #resumePaper{--u:1;background:#fff;width:794px;min-height:1123px;padding:calc(34px*var(--u)) calc(42px*var(--u)) calc(40px*var(--u));margin:0 auto;box-shadow:0 4px 28px rgba(0,0,0,.14);color:#000;font-family:"Songti SC","STSong","SimSun","Noto Serif SC",serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .r-head{display:flex;gap:calc(18px*var(--u));align-items:flex-start}
+  .r-head-main{flex:1;min-width:0}
+  .r-name{font-size:calc(30px*var(--u));font-weight:900;letter-spacing:.06em;line-height:1.15;font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif}
+  .r-basic{margin-top:calc(9px*var(--u));font-size:calc(13.5px*var(--u));line-height:1.75;display:flex;flex-wrap:wrap;gap:2px calc(22px*var(--u))}
+  .r-basic .it{display:inline-flex;align-items:center;gap:5px}
+  .r-basic svg{flex:0 0 auto}
+  .r-photo{width:calc(92px*var(--u));height:calc(116px*var(--u));flex:0 0 calc(92px*var(--u));border:1px solid #d6d6d6;object-fit:cover;display:block;cursor:pointer;background:#f4f4f4}
+  .r-photo-ph{width:calc(92px*var(--u));height:calc(116px*var(--u));flex:0 0 calc(92px*var(--u));border:1.5px dashed #b9b9b9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#888;font-size:calc(11px*var(--u));cursor:pointer;background:#fafafa;text-align:center;padding:6px;line-height:1.4;font-family:"PingFang SC","Microsoft YaHei",sans-serif}
+  .r-intent{margin-top:calc(8px*var(--u));font-size:calc(13.5px*var(--u));display:flex;flex-wrap:wrap;gap:2px calc(22px*var(--u));align-items:center}
+  .r-intent .it{display:inline-flex;align-items:center;gap:5px}
+  .r-section{margin-top:calc(15px*var(--u))}
+  .r-sec-title{font-size:calc(16.5px*var(--u));font-weight:900;letter-spacing:.04em;padding-bottom:calc(4px*var(--u));border-bottom:2.5px solid #000;font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;line-height:1.3}
+  .r-entry{margin-top:calc(9px*var(--u))}
+  .r-entry-head{display:flex;align-items:baseline;gap:calc(10px*var(--u))}
+  .r-entry-title{font-weight:900;font-size:calc(13.8px*var(--u))}
+  .r-entry-sub{font-size:calc(13px*var(--u));color:#111}
+  .r-entry-date{margin-left:auto;font-weight:900;font-size:calc(13px*var(--u));white-space:nowrap;text-align:right}
+  .r-body{margin-top:calc(3px*var(--u));font-size:calc(12.3px*var(--u));line-height:1.62;text-align:justify;word-break:break-word}
+  .r-body .ln{min-height:1em;white-space:pre-wrap}
+  .r-text{margin-top:calc(7px*var(--u));font-size:calc(12.3px*var(--u));line-height:1.62;text-align:justify}
+  .r-text .ln{min-height:1em;white-space:pre-wrap}
+  .density-row{display:flex;gap:8px;margin-top:10px}
+  .density-row button{flex:1}
+  .density-row button.on{background:#111;color:#fff;border-color:#111}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#111;color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:99;max-width:88vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* A4 分页参考线 */
+  .paper-outer{position:relative;margin:0 auto}
+  .page-guide{position:absolute;left:0;right:0;border-top:2px dashed #f59e0b;pointer-events:none;z-index:5}
+  .page-guide span{position:absolute;right:6px;top:-22px;background:#f59e0b;color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;font-family:"PingFang SC","Microsoft YaHei",sans-serif}
+  .page-count{max-width:794px;margin:0 auto 10px;font-size:12.5px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .page-count b{color:var(--text)}
+
+  /* 确认弹窗（不用系统弹窗，壳里也能用） */
+  .modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-mask.show{display:flex}
+  .modal{background:#fff;border-radius:12px;max-width:400px;width:100%;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+  .modal p{margin:0 0 16px;font-size:14px;line-height:1.7}
+  .modal .mrow{display:flex;gap:8px;justify-content:flex-end}
+
+  /* ---------- Print: only the paper ---------- */
+  @page{size:A4;margin:0}
+  @media print{
+    body{background:#fff}
+    .toolbar,.editor,.toast,.no-print,.page-guide,.page-count,.modal-mask{display:none !important}
+    .layout{display:block;max-width:none}
+    .preview-wrap{padding:0;overflow:visible}
+    .paper-scale{transform:none !important;width:auto !important;height:auto !important}
+    .paper-outer{width:auto}
+    #resumePaper{box-shadow:none;width:210mm;min-height:auto;margin:0;padding:12mm 13mm 12mm}
+    .r-sec-title{break-after:avoid}
+    .r-entry-head{break-after:avoid}
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="brand">简历编辑器<span>左边改，右边立刻变</span></div>
+  <div class="spacer"></div>
+  <span class="save-hint" id="saveHint">已自动保存到本机浏览器</span>
+  <span class="unsaved-badge" id="unsavedHint" role="status">● 有未保存修改</span>
+  <label class="toolbar-switch"><input type="checkbox" id="chkAutoSave" checked> 自动保存</label>
+  <button id="btnSave" class="primary">保存</button>
+  <button id="btnImport">导入 JSON</button>
+  <button id="btnExportJson">导出 JSON</button>
+  <button id="btnReset">恢复初始简历</button>
+  <button id="btnPng" class="blue">导出图片</button>
+  <button id="btnPdf" class="primary">导出 PDF</button>
+  <div class="toolbar-note">导出 JSON 发给助理推上 GitHub，就算正式定版保存 · 本页修改先存这台浏览器的本地缓存，下次打开会自动加载上次保存的结果接着显示</div>
+  <input type="file" id="fileImport" accept="application/json,.json" hidden>
+  <input type="file" id="filePhoto" accept="image/*" hidden>
+</div>
+
+<div class="layout">
+  <!-- ================= Editor ================= -->
+  <aside class="editor" id="editor"></aside>
+
+  <!-- ================= Preview ================= -->
+  <main class="preview-wrap">
+    <div class="page-count" id="pageCount"></div>
+    <div class="paper-scale" id="paperScale">
+      <div class="paper-outer" id="paperOuter">
+        <div id="resumePaper"></div>
+        <div id="pageGuides"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="modal-mask" id="modalMask">
+  <div class="modal">
+    <p id="modalText"></p>
+    <div class="mrow">
+      <button id="modalCancel">取消</button>
+      <button id="modalOk" class="primary">确定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============ 默认数据：谢永镇本人简历（2026-11-17 快照原文） ============ */
+var KUAISHOU_BODY = [
+"实习描述：参与快手KRN(快手React Native)暑期转日常主会场开发，参与前端L3 AI生码平台 产品化建设和原子化能力建设。",
+"1.业务需求：",
+" • 负责 26暑期转日常主会场 宠物装扮商城、支付链路、暑期纪念装扮、海报分享 等上线需求 和 后续维护；",
+" • 数据监控：通过 埋点上报 Radar 平台，监控 支付超时率、支付失败率，及时应对 边界 case 引发的 客诉；",
+" • 多端、多场景适配：解决4tab、降级、软键盘弹出、主站/极速版、多机型（Android/Harmony/iOS） 等 适配问题",
+"2.技术需求：L3 前端 AI 生码——AI 能在较少人工干预下，完成从需求理解、代码生成、真机验证到最终交付的完整闭环",
+"背景：AI 生码的原子化能力已具备，但仍未形成完整的交付流程，且 UI 还原效果与设计稿有偏差，可信度不足",
+"现有原子化能力：物料盘点；物料解析成 需求-设计契约（Checklist、PRD-Figma 桥接报告、KTest 用例 等）；Pixel Diff；Mock 覆盖集；Logic Verification，连接真机，自动模拟用户操作，验证状态、交互等是否符合需求。",
+"总体策略：Skill + Loop Engineering；Agent 将Skill 作为可复用的标准操作手册来执行；Loop Engineering 则基于真机运行的真实证据，推动“生成→验证→修复”反复迭代，解决需求理解偏差和交付结果可信度不足的问题。",
+"产品化能力建设：",
+"• 引擎层（M1 Harness）：接入公司统一的编排引擎，把分散的原子能力编排成阶段化流水线，以 五阶段状态机 和 质量门禁驱动流程自动推进：S0环境检查与物料盘点→S1需求-设计契约→S2 UI 生成与像素还原（UI Loop）和 S3 Mock 覆盖集→ S4逻辑生产与真机验证（Logic Loop）；门禁准出标准分两类，脚本判定硬指标（pixel diff得分、覆盖率等）和 Evaluator 子Agent 复核真机截图（核对真机操作等）；失败时带证据回到对应上游自动修复，需人工决策时进入 human gate 等待。",
+"• 产品层（Module Platform）：用 manifest.json 统一记录 进度、阻塞、决策、产物等，作为全局 HTML 看板的唯一数据源；中途阻塞需人工介入时，平台保留现场，解决问题后重启进程，可从断点续跑。",
+"• 日志归档与 KIM 通知：完整生码、自动修复过程 归档云端日志；如果是 需人工介入的阻塞，通过KIM通知用户、管理员。",
+"原子化能力建设（UI Loop & Logic Loop 原子能力优化）：",
+"(1) UI Loop 难点：即使整图像素差异达到了准出标准，由于局部UI问题占全图像素比例低，人眼仍会明显感觉局部效果不对",
+"解决方案：",
+"• 针对局部 UI 做集中差异检测，并将固定窗口升级为自适应多尺度积分图滑窗。",
+"• Memory 沉淀、检索、消费：将人工纠正和迭代经验泛化为 feedback_、learned_，统一登记到 MEMORY.md；每轮修复开始前，先检索MEMORY.md，加载经验元数据，在Evaluator 发现差异后，再根据差异原因加载对应的经验详情；Generator根据经验调整修复方案，并记录经验消费情况。",
+"• 增强准出标准：Evaluator 会校验每条已加载经验是否都被实际消费，未消费则阻塞 UI Loop 准出。",
+"(2) Logic Loop 难点：当前 Logic Loop 中的 真机验证，是 单设备串行验证，验证场景越多，耗时越长",
+"解决方案：",
+"• 双设备并发真机验证：考虑到每个验证场景session，有独立的Mock数据和隔离的工作区，可采用双设备并发验证，创建两条lane，底层共享同一个 ksdt daemon实例；升级调度器的调度逻辑，比如 session 队列分发、汇聚结果、失败重试等。",
+"• 链路建立串行，验证修复并行：由于底层仍共享同一个 ksdt daemon 实例，链路建立阶段的并发控制命令会冲突，互相扰乱调试通道，因此，需要单独对链路建立阶段进行加锁，保证 链路串行建立。",
+"实测数据：选取五个独立 Session（验证弹窗正常显示等）；测试 环境初始化 + 两组 Session Loop，单设备串行总耗时18分22秒，双设备并发总耗时14分17秒，节省4分05秒（22.2%），加速比 1.29x（其中，环境初始化固定耗时 5 分 17 秒）；双设备并发时，五个session 在各自 lane 上的验证时间有重叠，证明并发验证是生效的。",
+"结论：由于测试Session 数量较少，Session 执行在总耗时中的占比较低，5 分 17 秒的固定环境初始化成本稀释了整体收益；随着 Session 数量增加，可并行执行的耗时占比会进一步提升，双设备并发在多 Session 任务中的性能收益预期更明显。",
+"复盘&未来计划：云端部署多设备验证、多状态 UI Loop、逐层比较 真机Fiber树 和 Figma JSON 树（Figma ID）"
+].join("\n");
+
+var HIKVISION_BODY = [
+"实习描述：开发定制项目，参与设计智能体的澄清表单人机协作回路，参与基建性能优化。",
+"贡献亮点：",
+"1.澄清表单人机协作回路（生成式 UI，智能表单，声明式数据，可信组件）",
+"背景：我们的智能体面向数据场景，数据场景有一个天然难题：用户的问题经常是模糊、多解的。在对比 多轮自然语言追问、固定模板表单的优缺点后，决定 兼顾 灵活性和结构化，采用 AI 动态生成结构化表单 + 自然语言回填 方案",
+"关键设计：声明式数据+可信组件",
+" • 明确定义澄清时机：在模型Prompt中, 明确定义 当用户的问题缺少必需的关键维度时，才生成澄清表单。",
+" • 澄清表单的安全设计：在对比 生成式 HTML 的优缺点（自由排版、xss、沙箱逃逸、数据外泄、成本高）后，选择走声明式 JSON 路线，用 Zod 定义了一套组件目录，每个组件有对应的 schema 约束。模型只能从目录中挑选组件并按 schema 配参数，输出的是数据而非可执行代码，避免了脚本注入攻击。JSON数据到达前端后先做约束校验，发现问题自动修复。",
+" • 回流设计：没有把难读的JSON 直接丢回后端，而是把用户的选择反查成可读的自然语言，回填到输入框，再发送给Agent；从而保持对话历史可读、可追溯，有利于排查问题和上下文管理",
+" • 交互体验设计：由模型在 schema 中声明字段间依赖关系，然后，前端按条件动态显隐；通过 集中式表单状态+受控组件模式，实现控件状态双向绑定。",
+"2. Webpack 构建性能优化：调研 Vite 与 Turbopack，考虑到插件兼容性等原因，转向 优化构建过程，通过 speed-measure-plugin 定位瓶颈（如babel、loader 等），引入 SWC（对比 esbuild-loader）、thread-loader、关闭开发 Hash；原型验证：冷启动 8 min → ~3 min（SWC 40%，thread-loader 25%，关闭开发 Hash 20%）；启用持久化缓存，二次启动→ 10s 内"
+].join("\n");
+
+var ZENFEED_BODY = [
+"https://github.com/glidea/zenfeed（后端）https://github.com/glidea/zenfeed-web/tree/alpha（前端PR，合并进 alpha 分支）",
+"项目描述：一款优化性能与沉浸式体验的现代化 RSS 阅读器,通过 SSR、ShadowDOM, 解决首屏性能、第三方内容渲染痛点",
+"核心贡献：",
+"1.针对 第三方HTML污染,使用 ShadowDOM 实现浏览器原生样式隔离,无需复杂 CSS 方案,并适配深色模式",
+"2.针对 首屏加载延迟严重,通过 SvelteKit 实现 SSR,首屏加载时间从 3.2s 降至 < 1s"
+].join("\n");
+
+var EXAM_BODY = [
+"项目描述：多角色在线考试系统，题库管理、在线组卷、在线考试、自动判分与成绩统计，基于 RAG 的 AI 错题讲解模块",
+"技术栈：Spring Boot、MVC、MyBatis-Plus、MySQL、Redis、JWT、Lombok；Vue 全家桶 + Element Plus；RAG 向量检索",
+"核心工作：",
+" • 独立完成题库、试题、考试、成绩等核心模块的需求梳理、接口方案设计与编码实现，基于 Spring MVC 落地 20+ RESTful 接口并完成单元自测;使用 MyBatis-Plus简化持久层开发，对高频多表关联查询补充联合索引，优化成绩查询性能。",
+" • 多角色身份认证：基于 JWT（SHA256）实现无状态登录鉴权，Token 携带角色、姓名等信息、有效期 5 小时；后端统一拦截器校验 Token 合法性并按角色路由接口，实现学生 / 教师 / 管理员的权限隔离。",
+" • 基于 RAG 搭建 AI 错题讲解模块：对教材文档与题库解析做 Token 感知分块后向量入库，学生交卷后按错题知识点召回相关上下文，动态组装 Prompt 调用大模型生成个性化讲解。"
+].join("\n");
+
+var SKILLS_TEXT = [
+" • 前端与跨端开发：熟悉 KRN（快手 React Native）技术体系，覆盖安卓 /iOS/ 鸿蒙多端适配、4Tab 等复杂业务场景；了解 Webpack 构建原理与 Vite 核心优势，了解 Monorepo 架构治理模式（Turborepo、Catalog 等）；掌握前端性能优化常用手段、性能分析工具与业务埋点方案；掌握 React、Vue 前端框架，了解 Svelte 框架特性；",
+" • AI 工程化与开发效能：熟练使用 Claude Code、Codex进行VibeCoding，基于 Skills（grill-me、openspec 等） 与 MCP 生态提效；熟悉 AI 工作流工程化落地，具备 生成式 UI、智能表单（声明式数据+可信组件）、多 Skill 串联编排、Loop Engineering 迭代验证等实践经验，能够提升需求理解到代码交付的闭环效率。",
+" • 全栈技术基础：了解 Spring Boot 生态下 MVC 分层架构、JPA 持久层开发、JWT 无状态鉴权、Redis 缓存 等后端基础技术，具备完整的前后端联调与接口协作能力。"
+].join("\n");
+
+var uidSeq = 100;
+function uid(){ return "id" + (++uidSeq) + "_" + Math.random().toString(36).slice(2,7); }
+
+function defaultData(){
+  return {
+    name: "谢永镇",
+    hometown: "温州瑞安",
+    phone: "19858105401",
+    email: "1253201093@qq.com",
+    photo: "",
+    intentionPosition: "AI全栈工程师/前端工程师",
+    intentionStatus: "随时到岗",
+    showIntention: true,
+    density: "fit",
+    sections: [
+      { id: uid(), title: "教育背景", visible: true, type: "entries", entries: [
+        { id: uid(), title: "浙江工业大学", subtitle: "软件工程（本科）", date: "2023.09 - 2027.08",
+          body: "绩点排名：5/189　荣誉：省政府奖学金、全国大学生服务外包竞赛三等奖、美国大学生数学建模大赛 H奖、蓝桥杯国三" }
+      ]},
+      { id: uid(), title: "实习经历", visible: true, type: "entries", entries: [
+        { id: uid(), title: "北京 快手科技有限公司 增长工程中心", subtitle: "前端开发", date: "2026.06 - 2026.09", body: KUAISHOU_BODY },
+        { id: uid(), title: "海康威视数字技术股份有限公司 通用软件产品部", subtitle: "前端开发", date: "2026.02 - 2026.05", body: HIKVISION_BODY }
+      ]},
+      { id: uid(), title: "项目经历", visible: true, type: "entries", entries: [
+        { id: uid(), title: "开源项目 Zenfeed RSS Reader（1.6K star）", subtitle: "前端贡献者", date: "2025.12 - 2026.02", body: ZENFEED_BODY },
+        { id: uid(), title: "智能在线考试系统", subtitle: "全栈开发", date: "2025.10 - 2025.12", body: EXAM_BODY }
+      ]},
+      { id: uid(), title: "专业技能", visible: true, type: "text", content: SKILLS_TEXT, entries: [] }
+    ]
+  };
+}
+
+/* ============ 状态与持久化（localStorage，用户明确要求刷新不丢） ============ */
+var LS_KEY = "jianli-editor-xieyongzhen-v1";
+var LS_AUTOSAVE_KEY = "jianli-editor-autosave-v1";
+var LS_TIME_KEY = "jianli-editor-savetime-v1";
+var state = null;
+var autoSaveEnabled = true;
+var isDirty = false;
+var lastSaveTime = null;
+try{
+  var _av = localStorage.getItem(LS_AUTOSAVE_KEY);
+  if(_av !== null) autoSaveEnabled = (_av === "1");
+  var _tv = localStorage.getItem(LS_TIME_KEY);
+  if(_tv) lastSaveTime = parseInt(_tv, 10) || null;
+}catch(e){}
+function load(){
+  try{
+    var raw = localStorage.getItem(LS_KEY);
+    if(raw){ var d = JSON.parse(raw); if(d && d.sections){ state = d; return; } }
+  }catch(e){}
+  state = defaultData();
+}
+function fmtTime(ts){
+  if(!ts) return "";
+  try{ return new Date(ts).toLocaleTimeString("zh-CN",{hour12:false}); }catch(e){ return ""; }
+}
+function updateSaveUI(){
+  var hint = document.getElementById("saveHint");
+  var badge = document.getElementById("unsavedHint");
+  var chk = document.getElementById("chkAutoSave");
+  if(chk) chk.checked = autoSaveEnabled;
+  if(badge){
+    if(!autoSaveEnabled && isDirty) badge.classList.add("show"); else badge.classList.remove("show");
+  }
+  if(hint){
+    if(!autoSaveEnabled && isDirty){
+      hint.textContent = "自动保存已关 · 有未保存修改，点「保存」才存到本机";
+    }else if(lastSaveTime){
+      hint.textContent = (autoSaveEnabled ? "已自动保存" : "已保存") + " · " + fmtTime(lastSaveTime);
+    }else if(autoSaveEnabled){
+      hint.textContent = "已自动保存到本机浏览器";
+    }else{
+      hint.textContent = "自动保存已关 · 点「保存」存到本机浏览器";
+    }
+  }
+}
+function persistNow(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    lastSaveTime = Date.now();
+    try{ localStorage.setItem(LS_TIME_KEY, String(lastSaveTime)); }catch(e){}
+  }catch(e){}
+  isDirty = false;
+  updateSaveUI();
+}
+var saveTimer = null;
+function save(){
+  if(autoSaveEnabled){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){ persistNow(); }, 250);
+  }else{
+    isDirty = true;
+    updateSaveUI();
+  }
+}
+function flashSaved(){ updateSaveUI(); }
+function manualSave(){
+  clearTimeout(saveTimer);
+  persistNow();
+  toast("已保存到本机浏览器，下次打开会接着这个版本显示");
+}
+window.addEventListener("beforeunload", function(e){
+  if(!autoSaveEnabled && isDirty){
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+/* ============ 工具 ============ */
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function linesHtml(text){
+  return String(text||"").split("\n").map(function(l){ return '<div class="ln">' + esc(l) + "</div>"; }).join("");
+}
+function toast(msg){
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._tm); t._tm = setTimeout(function(){ t.classList.remove("show"); }, 2600);
+}
+var _confirmCb = null;
+function showConfirm(msg, onOk){
+  document.getElementById("modalText").textContent = msg;
+  document.getElementById("modalMask").classList.add("show");
+  _confirmCb = onOk;
+}
+document.getElementById("modalCancel").addEventListener("click", function(){
+  document.getElementById("modalMask").classList.remove("show"); _confirmCb = null;
+});
+document.getElementById("modalOk").addEventListener("click", function(){
+  document.getElementById("modalMask").classList.remove("show");
+  var cb = _confirmCb; _confirmCb = null; if(cb) cb();
+});
+var ICON = {
+  phone: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.08 4.18 2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+  mail: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
+  pin: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  brief: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+  clock: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+  cam: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1.6"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'
+};
+
+/* ============ 预览渲染 ============ */
+function renderPreview(){
+  var p = document.getElementById("resumePaper");
+  var h = "";
+  h += '<div class="r-head"><div class="r-head-main">';
+  h += '<div class="r-name">' + esc(state.name || "姓名") + "</div>";
+  h += '<div class="r-basic">';
+  if(state.phone) h += '<span class="it">' + ICON.phone + esc(state.phone) + "</span>";
+  if(state.email) h += '<span class="it">' + ICON.mail + esc(state.email) + "</span>";
+  if(state.hometown) h += '<span class="it">' + ICON.pin + "籍贯：" + esc(state.hometown) + "</span>";
+  h += "</div>";
+  if(state.showIntention){
+    h += '<div class="r-intent">';
+    if(state.intentionPosition) h += '<span class="it">' + ICON.brief + "求职意向：" + esc(state.intentionPosition) + "</span>";
+    if(state.intentionStatus) h += '<span class="it">' + ICON.clock + esc(state.intentionStatus) + "</span>";
+    h += "</div>";
+  }
+  h += "</div>";
+  if(state.photo){
+    h += '<img class="r-photo" id="rPhoto" src="' + state.photo + '" alt="证件照">';
+  }else{
+    h += '<div class="r-photo-ph" id="rPhoto">' + ICON.cam + "<span>点击上传<br>证件照</span></div>";
+  }
+  h += "</div>";
+
+  state.sections.forEach(function(sec){
+    if(!sec.visible) return;
+    h += '<section class="r-section"><div class="r-sec-title">' + esc(sec.title) + "</div>";
+    if(sec.type === "text"){
+      h += '<div class="r-text">' + linesHtml(sec.content) + "</div>";
+    }else{
+      (sec.entries||[]).forEach(function(en){
+        h += '<div class="r-entry"><div class="r-entry-head">';
+        h += '<span class="r-entry-title">' + esc(en.title) + "</span>";
+        if(en.subtitle) h += '<span class="r-entry-sub">' + esc(en.subtitle) + "</span>";
+        if(en.date) h += '<span class="r-entry-date">' + esc(en.date) + "</span>";
+        h += "</div>";
+        if(en.body) h += '<div class="r-body">' + linesHtml(en.body) + "</div>";
+        h += "</div>";
+      });
+    }
+    h += "</section>";
+  });
+  p.innerHTML = h;
+  var ph = document.getElementById("rPhoto");
+  if(ph) ph.addEventListener("click", function(){ document.getElementById("filePhoto").click(); });
+  applyDensity();
+  fitPaper();
+}
+
+/* 排版密度：标准 = 正常字号（内容多时 2 页）；紧凑一页 = 整体等比缩小，收进一页 A4 */
+function applyDensity(){
+  var paper = document.getElementById("resumePaper");
+  if(!paper) return;
+  paper.style.setProperty("--u", 1);
+  if(state.density === "fit"){
+    var h = paper.offsetHeight;
+    if(h > A4H){
+      var u = Math.max(0.42, (A4H - 6) / h);
+      paper.style.setProperty("--u", u.toFixed(3));
+    }
+  }
+}
+
+/* A4 自适应缩放，避免手机横向滚动；分页点自动落在整行之间，不切穿文字 */
+var A4H = 1123; /* 794 宽 A4 在 96dpi 下的高 */
+function relTop(el, paper){
+  var y = 0, n = el;
+  while(n && n !== paper){ y += n.offsetTop; n = n.offsetParent; }
+  return y;
+}
+function computeBreaks(){
+  var paper = document.getElementById("resumePaper");
+  if(!paper) return [];
+  var total = paper.offsetHeight;
+  if(total <= A4H) return [];
+  var tops = [];
+  paper.querySelectorAll(".r-sec-title, .r-entry-head, .r-body .ln, .r-text .ln").forEach(function(el){
+    var t = relTop(el, paper);
+    if(t > 0 && t < total) tops.push(t);
+  });
+  tops.sort(function(a,b){ return a-b; });
+  var breaks = [], start = 0, guard = 0;
+  while(start + A4H < total && guard++ < 20){
+    var target = start + A4H, best = -1;
+    for(var i = 0; i < tops.length; i++){
+      if(tops[i] > start + 240 && tops[i] <= target) best = tops[i];
+      if(tops[i] > target) break;
+    }
+    var cut = best > 0 ? best : target;
+    breaks.push(cut);
+    start = cut;
+  }
+  return breaks;
+}
+function fitPaper(){
+  var wrap = document.querySelector(".preview-wrap");
+  var scaler = document.getElementById("paperScale");
+  var paper = document.getElementById("resumePaper");
+  if(!wrap || !scaler || !paper) return;
+  var avail = wrap.clientWidth - 32;
+  var scale = Math.min(1, avail / 794);
+  scaler.style.transform = "scale(" + scale + ")";
+  scaler.style.width = (794 * scale) + "px";
+  scaler.style.height = (paper.offsetHeight * scale) + "px";
+
+  var breaks = computeBreaks();
+  var pages = breaks.length + 1;
+  var guides = document.getElementById("pageGuides");
+  var gh = "";
+  breaks.forEach(function(y, i){
+    gh += '<div class="page-guide" style="top:' + y + 'px"><span>第 ' + (i+1) + ' 页结束 · 第 ' + (i+2) + ' 页从这里开始</span></div>';
+  });
+  guides.innerHTML = gh;
+  var pc = document.getElementById("pageCount");
+  if(pc) pc.innerHTML = "预览宽度 = A4 纸宽，当前内容共 <b>" + pages + " 页</b>。橙色虚线是分页位置，已经自动避开整行文字、落在段落之间，导出 PDF 就按这里切页，不会把哪一行切成两半。";
+}
+window.addEventListener("resize", fitPaper);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ setTimeout(fitPaper, 50); });
+
+/* ============ 编辑面板渲染 ============ */
+var openCards = { basic: true };
+function fieldHtml(label, val, attrs){
+  return '<div class="field"><label>' + label + '</label><input type="text" aria-label="' + esc(label) + '" value="' + esc(val) + '" ' + attrs + "></div>";
+}
+function renderEditor(){
+  var ed = document.getElementById("editor");
+  var h = "";
+
+  /* 基本信息 */
+  h += '<div class="card' + (openCards.basic ? "" : " closed") + '" data-card="basic">';
+  h += '<div class="card-head"><span class="chev">▾</span><span class="ctitle">基本信息与求职意向</span></div><div class="card-body">';
+  h += fieldHtml("姓名", state.name, 'data-bind="name"');
+  h += '<div class="row2">' + fieldHtml("电话", state.phone, 'data-bind="phone"') + fieldHtml("邮箱", state.email, 'data-bind="email"') + "</div>";
+  h += '<div class="row2">' + fieldHtml("籍贯", state.hometown, 'data-bind="hometown"') + fieldHtml("到岗状态", state.intentionStatus, 'data-bind="intentionStatus"') + "</div>";
+  h += fieldHtml("求职意向（职位）", state.intentionPosition, 'data-bind="intentionPosition"');
+  h += '<label class="switch"><input type="checkbox" aria-label="在简历上显示求职意向" data-bind-check="showIntention"' + (state.showIntention ? " checked" : "") + "> 在简历上显示求职意向</label>";
+  h += '<div class="field"><label>排版密度</label><div class="density-row">';
+  h += '<button data-density="fit" class="' + (state.density === "fit" ? "on" : "") + '">紧凑（一页）</button>';
+  h += '<button data-density="std" class="' + (state.density !== "fit" ? "on" : "") + '">标准（字大好读）</button>';
+  h += '</div><div class="hint">默认是「紧凑」：全部内容等比缩小、收进一页 A4，字偏小。切到「标准」字会变大好读，内容会排成两页（和你在全民简历上的一样）。</div></div>';
+  h += '<div class="photo-row">';
+  h += state.photo ? '<img class="photo-thumb" src="' + state.photo + '" alt="证件照预览">' : '<div class="photo-thumb empty">暂无照片</div>';
+  h += '<div><button class="small" id="btnPhoto">上传 / 更换照片</button>' + (state.photo ? ' <button class="small danger" id="btnPhotoDel">删除</button>' : "") + '<div class="hint">照片会显示在简历右上角，也可以直接点预览里的照片框上传。</div></div>';
+  h += "</div></div></div>";
+
+  /* 各板块 */
+  state.sections.forEach(function(sec, si){
+    var key = "sec_" + sec.id;
+    var open = openCards[key] !== false;
+    h += '<div class="card' + (open ? "" : " closed") + '" data-card="' + key + '">';
+    h += '<div class="card-head"><span class="chev">▾</span><span class="ctitle">' + esc(sec.title || "未命名板块") + '</span>';
+    h += '<button class="mini-btn" data-act="sec-up" data-si="' + si + '" title="板块上移">↑</button>';
+    h += '<button class="mini-btn" data-act="sec-down" data-si="' + si + '" title="板块下移">↓</button>';
+    h += "</div><div class=\"card-body\">";
+    h += fieldHtml("板块标题", sec.title, 'data-sec-title="' + si + '"');
+    h += '<label class="switch"><input type="checkbox" aria-label="在简历上显示这个板块" data-sec-visible="' + si + '"' + (sec.visible ? " checked" : "") + "> 在简历上显示这个板块</label>";
+
+    if(sec.type === "text"){
+      h += '<div class="field"><label>正文（一行一条，换行即可）</label><textarea class="tall" aria-label="板块正文" data-sec-content="' + si + '">' + esc(sec.content) + "</textarea></div>";
+    }else{
+      (sec.entries||[]).forEach(function(en, ei){
+        h += '<div class="entry-box"><div class="entry-bar"><span class="enum">条目 ' + (ei+1) + '</span><span class="spacer"></span>';
+        h += '<button class="mini-btn" data-act="en-up" data-si="' + si + '" data-ei="' + ei + '" title="上移">↑</button>';
+        h += '<button class="mini-btn" data-act="en-down" data-si="' + si + '" data-ei="' + ei + '" title="下移">↓</button>';
+        h += '<button class="mini-btn danger" data-act="en-del" data-si="' + si + '" data-ei="' + ei + '" title="删除条目">删除</button>';
+        h += "</div>";
+        h += fieldHtml("单位 / 学校 / 项目名（加粗显示）", en.title, 'data-en="' + si + ":" + ei + ':title"');
+        h += '<div class="row2">' + fieldHtml("岗位 / 副标题", en.subtitle, 'data-en="' + si + ":" + ei + ':subtitle"') + fieldHtml("日期", en.date, 'data-en="' + si + ":" + ei + ':date"') + "</div>";
+        h += '<div class="field"><label>正文（每行一条要点，直接换行）</label><textarea class="tall" aria-label="条目正文" data-en="' + si + ":" + ei + ':body">' + esc(en.body) + "</textarea></div>";
+        h += "</div>";
+      });
+      h += '<div class="add-row"><button class="small" data-act="en-add" data-si="' + si + '">＋ 新增一条</button></div>';
+    }
+    h += '<div class="add-row"><button class="small danger" data-act="sec-del" data-si="' + si + '">删除整个板块</button></div>';
+    h += "</div></div>";
+  });
+
+  h += '<button id="btnAddSection" style="width:100%;min-height:42px">＋ 新增自定义板块</button>';
+  h += '<p class="hint">改任何一处，右边预览立刻同步。自动保存开着时，内容自动存到这台设备的浏览器里，刷新不会丢，下次打开接着上次保存的结果显示；关掉自动保存后，改动只停在当前页面里，要点上方「保存」才存。换设备或清缓存前，先点上方「导出 JSON」备份一份。</p>';
+
+  ed.innerHTML = h;
+  bindEditor();
+}
+
+function bindEditor(){
+  var ed = document.getElementById("editor");
+
+  ed.querySelectorAll(".card-head").forEach(function(head){
+    head.addEventListener("click", function(e){
+      if(e.target.closest("button")) return;
+      var card = head.parentElement;
+      var key = card.getAttribute("data-card");
+      card.classList.toggle("closed");
+      openCards[key] = !card.classList.contains("closed");
+    });
+  });
+
+  ed.querySelectorAll("[data-density]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      state.density = btn.getAttribute("data-density");
+      renderEditor(); renderPreview(); save();
+      toast(state.density === "fit" ? "已切到紧凑版，收进一页" : "已切到标准版");
+    });
+  });
+
+  ed.querySelectorAll("[data-bind]").forEach(function(inp){
+    inp.addEventListener("input", function(){ state[inp.getAttribute("data-bind")] = inp.value; renderPreview(); save(); });
+  });
+  ed.querySelectorAll("[data-bind-check]").forEach(function(inp){
+    inp.addEventListener("change", function(){ state[inp.getAttribute("data-bind-check")] = inp.checked; renderPreview(); save(); });
+  });
+  ed.querySelectorAll("[data-sec-title]").forEach(function(inp){
+    inp.addEventListener("input", function(){
+      var si = +inp.getAttribute("data-sec-title");
+      state.sections[si].title = inp.value;
+      var card = inp.closest(".card"); var t = card && card.querySelector(".ctitle");
+      if(t) t.textContent = inp.value || "未命名板块";
+      renderPreview(); save();
+    });
+  });
+  ed.querySelectorAll("[data-sec-visible]").forEach(function(inp){
+    inp.addEventListener("change", function(){ state.sections[+inp.getAttribute("data-sec-visible")].visible = inp.checked; renderPreview(); save(); });
+  });
+  ed.querySelectorAll("[data-sec-content]").forEach(function(inp){
+    inp.addEventListener("input", function(){ state.sections[+inp.getAttribute("data-sec-content")].content = inp.value; renderPreview(); save(); });
+  });
+  ed.querySelectorAll("[data-en]").forEach(function(inp){
+    inp.addEventListener("input", function(){
+      var parts = inp.getAttribute("data-en").split(":");
+      state.sections[+parts[0]].entries[+parts[1]][parts[2]] = inp.value;
+      renderPreview(); save();
+    });
+  });
+
+  ed.querySelectorAll("[data-act]").forEach(function(btn){
+    btn.addEventListener("click", function(e){
+      e.stopPropagation();
+      var act = btn.getAttribute("data-act");
+      var si = +btn.getAttribute("data-si");
+      var ei = btn.hasAttribute("data-ei") ? +btn.getAttribute("data-ei") : -1;
+      var secs = state.sections;
+      function swap(arr, a, b){ var t = arr[a]; arr[a] = arr[b]; arr[b] = t; }
+      if(act === "sec-up" && si > 0) swap(secs, si, si-1);
+      if(act === "sec-down" && si < secs.length-1) swap(secs, si, si+1);
+      if(act === "sec-del"){
+        showConfirm("确定删除「" + secs[si].title + "」整个板块吗？删了可以用「恢复初始简历」找回初始版本。", function(){
+          secs.splice(si,1); renderEditor(); renderPreview(); save();
+        });
+        return;
+      }
+      if(act === "en-add") secs[si].entries.push({ id: uid(), title: "", subtitle: "", date: "", body: "" });
+      if(act === "en-del") secs[si].entries.splice(ei,1);
+      if(act === "en-up" && ei > 0) swap(secs[si].entries, ei, ei-1);
+      if(act === "en-down" && ei < secs[si].entries.length-1) swap(secs[si].entries, ei, ei+1);
+      renderEditor(); renderPreview(); save();
+    });
+  });
+
+  var bp = document.getElementById("btnPhoto");
+  if(bp) bp.addEventListener("click", function(){ document.getElementById("filePhoto").click(); });
+  var bpd = document.getElementById("btnPhotoDel");
+  if(bpd) bpd.addEventListener("click", function(){ state.photo = ""; renderEditor(); renderPreview(); save(); });
+  var bas = document.getElementById("btnAddSection");
+  if(bas) bas.addEventListener("click", function(){
+    var sec = { id: uid(), title: "新板块", visible: true, type: "entries", entries: [{ id: uid(), title: "", subtitle: "", date: "", body: "" }] };
+    state.sections.push(sec);
+    openCards["sec_" + sec.id] = true;
+    renderEditor(); renderPreview(); save();
+    toast("已新增板块，在左边最下面编辑它");
+  });
+}
+
+/* ============ 工具栏 ============ */
+function withUnscaledPaper(fn){
+  var scaler = document.getElementById("paperScale");
+  var guides = document.getElementById("pageGuides");
+  var oldT = scaler.style.transform, oldW = scaler.style.width, oldH = scaler.style.height;
+  scaler.style.transform = "none"; scaler.style.width = "794px"; scaler.style.height = "auto";
+  if(guides) guides.style.display = "none";
+  function restore(){
+    scaler.style.transform = oldT; scaler.style.width = oldW; scaler.style.height = oldH;
+    if(guides) guides.style.display = "";
+  }
+  return { run: fn, restore: restore };
+}
+
+document.getElementById("btnSave").addEventListener("click", function(){ manualSave(); });
+document.getElementById("chkAutoSave").addEventListener("change", function(){
+  autoSaveEnabled = this.checked;
+  try{ localStorage.setItem(LS_AUTOSAVE_KEY, autoSaveEnabled ? "1" : "0"); }catch(e){}
+  if(autoSaveEnabled){
+    if(isDirty){ clearTimeout(saveTimer); persistNow(); toast("自动保存已开，未保存的修改已存好"); }
+    else{ updateSaveUI(); toast("自动保存已开，改动会自动存到本机"); }
+  }else{
+    updateSaveUI();
+    toast("自动保存已关，改动要点「保存」才存到本机");
+  }
+});
+
+document.getElementById("btnPdf").addEventListener("click", function(){
+  var paper = document.getElementById("resumePaper");
+  if(typeof html2canvas === "undefined" || !window.jspdf){ toast("PDF 组件没加载成功，请用浏览器打开本页后按 Ctrl / Cmd + P 打印存成 PDF"); return; }
+  toast("正在生成 PDF…");
+  var breaks = computeBreaks(); /* 先在缩放状态下算好分页点（CSS 像素） */
+  var ctx = withUnscaledPaper();
+  html2canvas(paper, { scale: 2, backgroundColor: "#ffffff", useCORS: true }).then(function(canvas){
+    ctx.restore();
+    var jsPDF = window.jspdf.jsPDF;
+    var pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    var ratio = canvas.height / paper.offsetHeight; /* CSS px → canvas px */
+    var cuts = [0].concat(breaks, [paper.offsetHeight]);
+    var page = 0;
+    for(var i = 0; i < cuts.length - 1; i++){
+      var y0 = Math.round(cuts[i] * ratio), y1 = Math.round(cuts[i+1] * ratio);
+      var h = y1 - y0;
+      if(h <= 0) continue;
+      var slice = document.createElement("canvas");
+      slice.width = canvas.width; slice.height = h;
+      slice.getContext("2d").drawImage(canvas, 0, y0, canvas.width, h, 0, 0, canvas.width, h);
+      if(page > 0) pdf.addPage();
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, h * 210 / canvas.width);
+      page++;
+    }
+    pdf.save((state.name || "简历") + "-简历.pdf");
+    toast("PDF 已下载，共 " + page + " 页");
+  }).catch(function(){
+    ctx.restore();
+    toast("PDF 生成失败，请用浏览器打开本页后按 Ctrl / Cmd + P 打印存成 PDF");
+  });
+});
+
+document.getElementById("btnPng").addEventListener("click", function(){
+  var paper = document.getElementById("resumePaper");
+  if(typeof html2canvas === "undefined"){ toast("图片导出组件没加载成功，请改用「导出 PDF」"); return; }
+  toast("正在生成图片…");
+  var ctx = withUnscaledPaper();
+  html2canvas(paper, { scale: 2, backgroundColor: "#ffffff", useCORS: true }).then(function(canvas){
+    ctx.restore();
+    var a = document.createElement("a");
+    a.download = (state.name || "简历") + "-简历.png";
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+    toast("图片已下载");
+  }).catch(function(){
+    ctx.restore();
+    toast("图片导出失败，请改用「导出 PDF」");
+  });
+});
+
+document.getElementById("btnExportJson").addEventListener("click", function(){
+  var blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.name || "简历") + "-简历数据.json";
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+  toast("数据已导出，换设备时用它导入就能恢复");
+});
+
+document.getElementById("btnImport").addEventListener("click", function(){ document.getElementById("fileImport").click(); });
+document.getElementById("fileImport").addEventListener("change", function(){
+  var f = this.files[0]; if(!f) return;
+  var r = new FileReader();
+  r.onload = function(){
+    try{
+      var d = JSON.parse(r.result);
+      if(!d || !d.sections) throw new Error("bad");
+      state = d; renderEditor(); renderPreview(); save(); toast("导入成功");
+    }catch(e){ toast("这个文件不是有效的简历数据 JSON"); }
+  };
+  r.readAsText(f);
+  this.value = "";
+});
+
+document.getElementById("btnReset").addEventListener("click", function(){
+  showConfirm("恢复成最初那份简历吗？你改过的内容会被覆盖，建议先导出 JSON 备份。", function(){
+    state = defaultData(); renderEditor(); renderPreview(); save(); toast("已恢复初始简历");
+  });
+});
+
+document.getElementById("filePhoto").addEventListener("change", function(){
+  var f = this.files[0]; if(!f) return;
+  var r = new FileReader();
+  r.onload = function(){ state.photo = r.result; renderEditor(); renderPreview(); save(); toast("照片已换上"); };
+  r.readAsDataURL(f);
+  this.value = "";
+});
+
+/* ============ 启动 ============ */
+load();
+renderEditor();
+renderPreview();
+updateSaveUI();
+setTimeout(fitPaper, 60);
+setTimeout(fitPaper, 400);
+})();
+</script>
+</body>
+</html>
